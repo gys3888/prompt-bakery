@@ -129,7 +129,7 @@ export default function App() {
             e.preventDefault();
             showToast('이미지 반죽하는 중... 🥖');
             try {
-              const compressedData = await compressImage(file, 600, 600, 0.6);
+              const compressedData = await compressImage(file, 800, 1200, 0.7);
               setPrefilledImage(compressedData);
               setEditingPrompt(null);
               setIsFormOpen(true);

@@ -98,7 +98,7 @@ export default function PromptDetailModal({ prompt, onClose, onCopy, onEdit, onD
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
         <div className="modal-actions-top">
           {onEdit && (

@@ -145,7 +145,7 @@ export default function PromptForm({
   const handleImageCompression = async (file) => {
     setIsCompressing(true);
     try {
-      const compressedData = await compressImage(file, 600, 600, 0.6);
+      const compressedData = await compressImage(file, 800, 1200, 0.7);
       setImageSrc(compressedData);
     } catch (err) {
       console.error(err);
@@ -284,7 +284,7 @@ export default function PromptForm({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content glass-panel form-modal-content" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>
           <X size={18} />
@@ -304,7 +304,9 @@ export default function PromptForm({
               
               {imageSrc ? (
                 <div className="preview-container">
-                  <img src={imageSrc} alt="Preview" className="preview-image" />
+                  <div className="preview-scroll-wrapper">
+                    <img src={imageSrc} alt="Preview" className="preview-image" />
+                  </div>
                   <button 
                     type="button" 
                     className="remove-preview-btn" 

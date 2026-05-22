@@ -90,7 +90,7 @@ export default function AuthModal({ onClose, onSuccess }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content glass-panel auth-modal-content" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} title="닫기">
           <X size={18} />

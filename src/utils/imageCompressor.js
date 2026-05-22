@@ -7,7 +7,7 @@
  * @param {number} quality (0 to 1)
  * @returns {Promise<string>} base64 compressed data URL
  */
-export const compressImage = (file, maxWidth = 600, maxHeight = 600, quality = 0.6) => {
+export const compressImage = (file, maxWidth = 800, maxHeight = 1200, quality = 0.7) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

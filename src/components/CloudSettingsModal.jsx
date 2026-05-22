@@ -42,7 +42,7 @@ export default function CloudSettingsModal({ onClose, onSave }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content glass-panel form-modal-content" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} title="닫기">
           <X size={18} />

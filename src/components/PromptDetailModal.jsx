@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Copy, Check, Calendar, Sparkles } from 'lucide-react';
+import { X, Copy, Check, Calendar, Sparkles, Edit3, Trash2 } from 'lucide-react';
 
-export default function PromptDetailModal({ prompt, onClose, onCopy }) {
+export default function PromptDetailModal({ prompt, onClose, onCopy, onEdit, onDelete }) {
   const [variables, setVariables] = useState([]);
   const [varValues, setVarValues] = useState({});
   const [copiedCompiled, setCopiedCompiled] = useState(false);
@@ -100,9 +100,29 @@ export default function PromptDetailModal({ prompt, onClose, onCopy }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>
-          <X size={18} />
-        </button>
+        <div className="modal-actions-top">
+          {onEdit && (
+            <button 
+              className="modal-action-btn" 
+              onClick={() => onEdit(prompt)}
+              title="레시피 수정"
+            >
+              <Edit3 size={16} />
+            </button>
+          )}
+          {onDelete && (
+            <button 
+              className="modal-action-btn delete" 
+              onClick={() => onDelete(prompt.id)}
+              title="레시피 삭제"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+          <button className="modal-action-btn close" onClick={onClose} title="닫기">
+            <X size={18} />
+          </button>
+        </div>
 
         <div className="detail-modal-layout">
           {/* Visual Side */}

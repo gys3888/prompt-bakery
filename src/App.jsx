@@ -3,7 +3,13 @@ import Sidebar from './components/Sidebar';
 import PromptGrid from './components/PromptGrid';
 import PromptForm from './components/PromptForm';
 import PromptDetailModal from './components/PromptDetailModal';
-import { getAllPrompts, addPrompt, updatePrompt, deletePrompt, incrementUsageCount } from './utils/db';
+import AuthModal from './components/AuthModal';
+import CloudSettingsModal from './components/CloudSettingsModal';
+import { 
+  getAllPrompts, addPrompt, updatePrompt, deletePrompt, incrementUsageCount,
+  getCloudPrompts, addCloudPrompt, updateCloudPrompt, deleteCloudPrompt, incrementCloudUsageCount, syncLocalToCloud
+} from './utils/db';
+import { getSupabaseConfig, getSupabaseClient } from './utils/supabaseClient';
 import { Plus, Search, Info, Check, Home, Settings, Cookie, Download, Upload, Trash2 } from 'lucide-react';
 import { compressImage } from './utils/imageCompressor';
 
@@ -49,6 +55,12 @@ export default function App() {
   // Mobile Tab State
   const [activeTab, setActiveTab] = useState('home'); // 'home' or 'settings'
   
+  // Cloud & Auth State
+  const [user, setUser] = useState(null);
+  const [isCloudConfigured, setIsCloudConfigured] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isCloudSettingsOpen, setIsCloudSettingsOpen] = useState(false);
+
   // Modals & Popups
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState(null);
@@ -58,10 +70,49 @@ export default function App() {
   // Toast notifications
   const [toast, setToast] = useState({ show: false, message: '' });
 
-  // Load prompts on mount
+  // Initialize Supabase configuration and auth state listener
   useEffect(() => {
-    loadPrompts();
+    const initSupabase = async () => {
+      const { isConfigured } = getSupabaseConfig();
+      setIsCloudConfigured(isConfigured);
+      
+      if (isConfigured) {
+        const client = getSupabaseClient();
+        if (client) {
+          try {
+            // Get current session
+            const { data: { session } } = await client.auth.getSession();
+            if (session?.user) {
+              setUser(session.user);
+            }
+            
+            // Listen for auth changes
+            const { data: { subscription } } = client.auth.onAuthStateChange((event, currentSession) => {
+              if (currentSession?.user) {
+                setUser(currentSession.user);
+              } else {
+                setUser(null);
+              }
+            });
+            
+            return () => {
+              subscription?.unsubscribe();
+            };
+          } catch (err) {
+            console.error('Supabase auth state error:', err);
+          }
+        }
+      } else {
+        setUser(null);
+      }
+    };
+    initSupabase();
   }, []);
+
+  // Reload prompts whenever user state changes
+  useEffect(() => {
+    loadPrompts(user);
+  }, [user]);
 
   // Global paste handler for images (runs only when form is closed)
   useEffect(() => {
@@ -99,19 +150,28 @@ export default function App() {
     };
   }, [isFormOpen]);
 
-  const loadPrompts = async () => {
+  const loadPrompts = async (currentUser = user) => {
     try {
-      let data = await getAllPrompts();
-      if (data.length === 0) {
-        for (const sample of BAKERY_SAMPLE_PROMPTS) {
-          await addPrompt(sample);
+      const { isConfigured } = getSupabaseConfig();
+      if (isConfigured && currentUser) {
+        // Load from Cloud
+        const cloudData = await getCloudPrompts();
+        setPrompts(cloudData);
+      } else {
+        // Load from local IndexedDB
+        let data = await getAllPrompts();
+        if (data.length === 0) {
+          for (const sample of BAKERY_SAMPLE_PROMPTS) {
+            await addPrompt(sample);
+          }
+          data = await getAllPrompts();
         }
-        data = await getAllPrompts();
+        setPrompts(data);
       }
-      setPrompts(data);
     } catch (err) {
-      console.error('Error loading prompts from IndexedDB:', err);
-      showToast('레시피 데이터를 가져오지 못했습니다.');
+      console.error('Error loading prompts:', err);
+      const { url } = getSupabaseConfig();
+      showToast(`레시피 로드 실패 (${url || '로컬'}): ${err.message || err}`);
     }
   };
 
@@ -169,14 +229,22 @@ export default function App() {
       return filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
   }, [prompts, searchQuery, activeTags, sortBy]);
-
   const handleSavePrompt = async (promptData) => {
     try {
+      const isCloud = isCloudConfigured && user;
       if (editingPrompt) {
-        await updatePrompt(promptData);
+        if (isCloud) {
+          await updateCloudPrompt(promptData);
+        } else {
+          await updatePrompt(promptData);
+        }
         showToast('레시피가 수정되었습니다! 🥖');
       } else {
-        await addPrompt(promptData);
+        if (isCloud) {
+          await addCloudPrompt(promptData);
+        } else {
+          await addPrompt(promptData);
+        }
         showToast('맛있는 레시피가 구워졌습니다! 🥐');
       }
       loadPrompts();
@@ -191,7 +259,12 @@ export default function App() {
   const handleDeletePrompt = async (id) => {
     if (window.confirm('이 레시피를 정말 삭제하시겠습니까?')) {
       try {
-        await deletePrompt(id);
+        const isCloud = isCloudConfigured && user;
+        if (isCloud) {
+          await deleteCloudPrompt(id);
+        } else {
+          await deletePrompt(id);
+        }
         showToast('레시피 삭제 완료');
         loadPrompts();
         if (selectedPrompt?.id === id) {
@@ -206,12 +279,58 @@ export default function App() {
 
   const handleCopyPrompt = async (id) => {
     try {
-      await incrementUsageCount(id);
-      const updatedData = await getAllPrompts();
-      setPrompts(updatedData);
+      const isCloud = isCloudConfigured && user;
+      if (isCloud) {
+        await incrementCloudUsageCount(id);
+        const cloudData = await getCloudPrompts();
+        setPrompts(cloudData);
+      } else {
+        await incrementUsageCount(id);
+        const localData = await getAllPrompts();
+        setPrompts(localData);
+      }
       showToast('클립보드에 프롬프트 복사 완료! 📋');
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAuthSuccess = async (authUser) => {
+    setUser(authUser);
+    setIsAuthOpen(false);
+    showToast(`${authUser.email} 계정으로 로그인했습니다!`);
+    
+    try {
+      const localPrompts = await getAllPrompts();
+      const nonSampleLocal = localPrompts.filter(p => !p.id.startsWith('sample-'));
+      
+      if (nonSampleLocal.length > 0) {
+        if (window.confirm(`현재 브라우저에 저장되어 있는 레시피 ${nonSampleLocal.length}개를 클라우드 계정으로 백업(동기화)하시겠습니까?\n(동기화 시 다른 기기에서도 이 레시피들을 보실 수 있습니다.)`)) {
+          showToast('클라우드로 레시피를 굽는 중... 🥐');
+          const uploadedCount = await syncLocalToCloud();
+          showToast(`${uploadedCount}개의 레시피가 성공적으로 클라우드에 구워졌습니다!`);
+        }
+      }
+    } catch (err) {
+      console.error('Migration error:', err);
+      showToast(`동기화 백업 실패: ${err.message || err}`);
+    }
+    
+    loadPrompts(authUser);
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm('로그아웃하시겠습니까?\n로그아웃 후에는 로컬 모드로 전환됩니다.')) {
+      const client = getSupabaseClient();
+      if (client) {
+        try {
+          await client.auth.signOut();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      setUser(null);
+      showToast('로그아웃되었습니다. 로컬 오븐으로 전환합니다.');
     }
   };
 
@@ -316,6 +435,11 @@ export default function App() {
         onImport={handleImport}
         onResetDB={handleResetDB}
         promptCount={prompts.length}
+        user={user}
+        isCloudConfigured={isCloudConfigured}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onLogout={handleLogout}
+        onOpenCloudSettings={() => setIsCloudSettingsOpen(true)}
       />
 
       {/* Main dashboard content */}
@@ -385,6 +509,39 @@ export default function App() {
         ) : (
           /* Settings container rendered inline on mobile width settings tab */
           <div className="settings-mobile-container">
+            <h3 style={{ fontFamily: 'var(--font-logo)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>클라우드 동기화</h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              어느 기기에서나 내 레시피를 동일하게 보고 편집할 수 있도록 클라우드에 연동합니다.
+            </p>
+            
+            <div className="settings-section" style={{ marginBottom: '1.5rem' }}>
+              {isCloudConfigured ? (
+                user ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="cloud-status-indicator synced" style={{ padding: '0.75rem 1rem' }}>
+                      <div className="status-dot green"></div>
+                      <span className="email-text" style={{ fontSize: '0.875rem' }}>{user.email} (연동 완료)</span>
+                    </div>
+                    <button className="btn btn-secondary" onClick={handleLogout} style={{ width: '100%', fontSize: '0.8125rem', padding: '0.6rem' }}>
+                      동기화 로그아웃
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => setIsAuthOpen(true)} style={{ width: '100%', fontSize: '0.8125rem', padding: '0.6rem' }}>
+                    동기화 로그인 / 가입
+                  </button>
+                )
+              ) : (
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setIsCloudSettingsOpen(true)} 
+                  style={{ width: '100%', borderStyle: 'dashed', justifyContent: 'center', fontSize: '0.8125rem', padding: '0.6rem' }}
+                >
+                  서버 연동 설정
+                </button>
+              )}
+            </div>
+
             <h3 style={{ fontFamily: 'var(--font-logo)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>데이터 보관함</h3>
             <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
               내 기기에 저장된 프롬프트 데이터를 내보내거나 가져옵니다.
@@ -474,6 +631,11 @@ export default function App() {
           prompt={selectedPrompt}
           onClose={() => setSelectedPrompt(null)}
           onCopy={handleCopyPrompt}
+          onEdit={(prompt) => {
+            setSelectedPrompt(null);
+            handleEditClick(prompt);
+          }}
+          onDelete={handleDeletePrompt}
         />
       )}
 
@@ -483,6 +645,40 @@ export default function App() {
           <Check size={14} style={{ color: 'var(--accent-green)' }} />
           <span>{toast.message}</span>
         </div>
+      )}
+
+      {isAuthOpen && (
+        <AuthModal
+          onClose={() => setIsAuthOpen(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      )}
+
+      {isCloudSettingsOpen && (
+        <CloudSettingsModal
+          onClose={() => setIsCloudSettingsOpen(false)}
+          onSave={async () => {
+            setIsCloudSettingsOpen(false);
+            const { isConfigured } = getSupabaseConfig();
+            setIsCloudConfigured(isConfigured);
+            let newUser = null;
+            if (isConfigured) {
+              const client = getSupabaseClient();
+              if (client) {
+                try {
+                  const { data: { session } } = await client.auth.getSession();
+                  newUser = session?.user || null;
+                  setUser(newUser);
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+            } else {
+              setUser(null);
+            }
+            loadPrompts(newUser);
+          }}
+        />
       )}
     </div>
   );

@@ -120,3 +120,140 @@ export const incrementUsageCount = (id) => {
     });
   });
 };
+
+// --- Supabase Cloud DB Helpers ---
+import { getSupabaseClient } from './supabaseClient';
+
+export const getCloudPrompts = async () => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data, error } = await client
+    .from('prompts')
+    .select('*')
+    .order('createdAt', { ascending: false });
+    
+  if (error) throw error;
+  return data || [];
+};
+
+export const addCloudPrompt = async (prompt) => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error('인증 정보가 없습니다. 다시 로그인해 주세요.');
+  
+  const { data, error } = await client
+    .from('prompts')
+    .insert([{
+      id: prompt.id,
+      user_id: user.id,
+      title: prompt.title,
+      promptText: prompt.promptText,
+      tags: prompt.tags || [],
+      compressedImage: prompt.compressedImage || '',
+      usageCount: prompt.usageCount || 0,
+      createdAt: prompt.createdAt || new Date().toISOString()
+    }]);
+    
+  if (error) throw error;
+  return prompt.id;
+};
+
+export const updateCloudPrompt = async (prompt) => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data, error } = await client
+    .from('prompts')
+    .update({
+      title: prompt.title,
+      promptText: prompt.promptText,
+      tags: prompt.tags || [],
+      compressedImage: prompt.compressedImage || '',
+      usageCount: prompt.usageCount || 0
+    })
+    .eq('id', prompt.id);
+    
+  if (error) throw error;
+  return prompt.id;
+};
+
+export const deleteCloudPrompt = async (id) => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data, error } = await client
+    .from('prompts')
+    .delete()
+    .eq('id', id);
+    
+  if (error) throw error;
+  return id;
+};
+
+export const incrementCloudUsageCount = async (id) => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data: prompt, error: fetchError } = await client
+    .from('prompts')
+    .select('usageCount')
+    .eq('id', id)
+    .single();
+    
+  if (fetchError) throw fetchError;
+  
+  const newCount = (prompt?.usageCount || 0) + 1;
+  
+  const { error: updateError } = await client
+    .from('prompts')
+    .update({ usageCount: newCount })
+    .eq('id', id);
+    
+  if (updateError) throw updateError;
+  return newCount;
+};
+
+export const syncLocalToCloud = async () => {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not configured');
+  
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error('인증 정보가 없습니다. 다시 로그인해 주세요.');
+  
+  const localPrompts = await getAllPrompts();
+  if (localPrompts.length === 0) return 0;
+  
+  const { data: cloudPrompts, error: fetchError } = await client
+    .from('prompts')
+    .select('id');
+    
+  if (fetchError) throw fetchError;
+  
+  const cloudIds = new Set((cloudPrompts || []).map(p => p.id));
+  
+  const promptsToUpload = localPrompts
+    .filter(p => !cloudIds.has(p.id))
+    .map(p => ({
+      id: p.id,
+      user_id: user.id,
+      title: p.title,
+      promptText: p.promptText,
+      tags: p.tags || [],
+      compressedImage: p.compressedImage || '',
+      usageCount: p.usageCount || 0,
+      createdAt: p.createdAt || new Date().toISOString()
+    }));
+    
+  if (promptsToUpload.length === 0) return 0;
+  
+  const { error: insertError } = await client
+    .from('prompts')
+    .insert(promptsToUpload);
+    
+  if (insertError) throw insertError;
+  return promptsToUpload.length;
+};
+

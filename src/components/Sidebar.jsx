@@ -11,7 +11,12 @@ export default function Sidebar({
   onExport,
   onImport,
   onResetDB,
-  promptCount = 0
+  promptCount = 0,
+  user = null,
+  isCloudConfigured = false,
+  onOpenAuth,
+  onLogout,
+  onOpenCloudSettings
 }) {
   const fileInputRef = useRef(null);
 
@@ -58,7 +63,34 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="sidebar-section" style={{ marginTop: 'auto' }}>
+      <div className="sidebar-section" style={{ marginTop: 'auto', marginBottom: '0.75rem' }}>
+        <span className="sidebar-title">클라우드 동기화 (기기 간 연동)</span>
+        <div className="settings-section">
+          {isCloudConfigured ? (
+            user ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="cloud-status-indicator synced">
+                  <div className="status-dot green"></div>
+                  <span className="email-text" title={user.email}>{user.email}</span>
+                </div>
+                <button className="btn btn-secondary" onClick={onLogout} style={{ width: '100%', fontSize: '0.75rem', padding: '0.45rem' }}>
+                  동기화 로그아웃
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-primary" onClick={onOpenAuth} style={{ width: '100%', fontSize: '0.75rem', padding: '0.45rem' }}>
+                동기화 로그인 / 가입
+              </button>
+            )
+          ) : (
+            <button className="btn btn-secondary" onClick={onOpenCloudSettings} style={{ width: '100%', borderStyle: 'dashed', fontSize: '0.75rem', padding: '0.45rem' }}>
+              서버 연동 설정
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="sidebar-section">
         <span className="sidebar-title">주방 도구 (백업)</span>
         <div className="settings-section">
           <div className="settings-row">
